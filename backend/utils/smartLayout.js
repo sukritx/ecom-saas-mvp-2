@@ -181,9 +181,10 @@ class SmartLayout {
    * @param {Array} products - Array of product images
    * @param {Object} frameInfo - Frame image info
    * @param {Array} icons - Array of icon images
+   * @param {Array} csvData - CSV product data (optional)
    * @returns {Promise<Array>} Layout recommendations
    */
-  static async generateLayoutRecommendations(products, frameInfo, icons) {
+  static async generateLayoutRecommendations(products, frameInfo, icons, csvData = null) {
     try {
       const layouts = [];
 
@@ -193,7 +194,7 @@ class SmartLayout {
         name: 'Product Grid',
         description: 'Organized grid layout perfect for catalogs',
         recommendedSize: { width: 1200, height: 1200 },
-        elements: await this.createGridElements(products, frameInfo),
+        elements: await this.createGridElements(products, frameInfo, csvData),
         priority: this.calculateGridPriority(products.length)
       });
 
@@ -203,7 +204,7 @@ class SmartLayout {
         name: 'Campaign Banner',
         description: 'Wide banner layout for social media',
         recommendedSize: { width: 1200, height: 630 },
-        elements: await this.createBannerElements(products, frameInfo, icons),
+        elements: await this.createBannerElements(products, frameInfo, icons, csvData),
         priority: 4
       });
 
@@ -213,7 +214,7 @@ class SmartLayout {
         name: 'Story Format',
         description: 'Vertical layout for Instagram Stories',
         recommendedSize: { width: 1080, height: 1920 },
-        elements: await this.createStoryElements(products, frameInfo, icons),
+        elements: await this.createStoryElements(products, frameInfo, icons, csvData),
         priority: 3
       });
 
@@ -223,7 +224,7 @@ class SmartLayout {
         name: 'Product Carousel',
         description: 'Multiple slides for product showcases',
         recommendedSize: { width: 1080, height: 1080 },
-        slides: await this.createCarouselSlides(products, frameInfo),
+        slides: await this.createCarouselSlides(products, frameInfo, csvData),
         priority: 5
       });
 
@@ -235,12 +236,186 @@ class SmartLayout {
   }
 
   /**
+   * Match product image to CSV data by SKU or filename
+   * @param {Object} product - Product image object
+   * @param {Array} csvData - CSV product data
+   * @returns {Object|null} Matched CSV row or null
+   */
+  static matchProductToCSV(product, csvData) {
+    if (!csvData || csvData.length === 0) return null;
+
+    const fileName = product.fileName || product.name || '';
+    const fileNameLower = fileName.toLowerCase().replace(/\.(jpg|jpeg|png|webp)$/i, '');
+
+    // Try to find matching CSV row
+    for (const row of csvData) {
+      if (row.sku && fileNameLower.includes(row.sku.toLowerCase())) {
+        return row;
+      }
+      if (row.sku && row.sku.toLowerCase().includes(fileNameLower)) {
+        return row;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Create text elements from CSV data
+   * @param {Object} csvRow - CSV data row
+   * @param {Object} position - Position configuration
+   * @returns {Array} Text elements
+   */
+  static createTextElementsFromCSV(csvRow, position) {
+    const elements = [];
+
+    if (!csvRow) return elements;
+
+    // Product name
+    if (csvRow.product_name) {
+      elements.push({
+        type: 'text',
+        content: csvRow.product_name,
+        dataField: 'product_name',
+        position: {
+          x: position.x,
+          y: position.y,
+          width: position.width,
+          height: 8
+        },
+        style: {
+          fontSize: 16,
+          color: '#000000',
+          fontWeight: 'bold',
+          textAlign: 'center'
+        },
+        zIndex: 10
+      });
+    }
+
+    // Brand
+    if (csvRow.brand) {
+      elements.push({
+        type: 'text',
+        content: csvRow.brand,
+        dataField: 'brand',
+        position: {
+          x: position.x,
+          y: position.y + 8,
+          width: position.width,
+          height: 5
+        },
+        style: {
+          fontSize: 12,
+          color: '#666666',
+          textAlign: 'center'
+        },
+        zIndex: 10
+      });
+    }
+
+    // Price information
+    if (csvRow.discounted_price || csvRow.full_price) {
+      const priceY = position.y + (csvRow.brand ? 13 : 8);
+      
+      if (csvRow.discounted_price && csvRow.full_price) {
+        // Show both prices with strikethrough on full price
+        elements.push({
+          type: 'text',
+          content: `${csvRow.full_price}`,
+          dataField: 'full_price',
+          position: {
+            x: position.x,
+            y: priceY,
+            width: position.width / 2,
+            height: 5
+          },
+          style: {
+            fontSize: 14,
+            color: '#999999',
+            textDecoration: 'line-through',
+            textAlign: 'right'
+          },
+          zIndex: 10
+        });
+
+        elements.push({
+          type: 'text',
+          content: `${csvRow.discounted_price}`,
+          dataField: 'discounted_price',
+          position: {
+            x: position.x + position.width / 2,
+            y: priceY,
+            width: position.width / 2,
+            height: 5
+          },
+          style: {
+            fontSize: 16,
+            color: '#E53E3E',
+            fontWeight: 'bold',
+            textAlign: 'left'
+          },
+          zIndex: 10
+        });
+      } else {
+        // Show single price
+        const price = csvRow.discounted_price || csvRow.full_price;
+        elements.push({
+          type: 'text',
+          content: `${price}`,
+          dataField: csvRow.discounted_price ? 'discounted_price' : 'full_price',
+          position: {
+            x: position.x,
+            y: priceY,
+            width: position.width,
+            height: 5
+          },
+          style: {
+            fontSize: 16,
+            color: '#000000',
+            fontWeight: 'bold',
+            textAlign: 'center'
+          },
+          zIndex: 10
+        });
+      }
+    }
+
+    // Discount badge
+    if (csvRow.discount_percent) {
+      elements.push({
+        type: 'badge',
+        content: `-${csvRow.discount_percent}%`,
+        dataField: 'discount_percent',
+        position: {
+          x: position.x + position.width - 15,
+          y: position.y - 5,
+          width: 15,
+          height: 8
+        },
+        style: {
+          fontSize: 14,
+          color: '#FFFFFF',
+          backgroundColor: '#E53E3E',
+          fontWeight: 'bold',
+          textAlign: 'center',
+          borderRadius: '4px'
+        },
+        zIndex: 11
+      });
+    }
+
+    return elements;
+  }
+
+  /**
    * Create grid layout elements
    * @param {Array} products - Product images
    * @param {Object} frameInfo - Frame info
+   * @param {Array} csvData - CSV product data (optional)
    * @returns {Promise<Array>} Layout elements
    */
-  static async createGridElements(products, frameInfo) {
+  static async createGridElements(products, frameInfo, csvData = null) {
     const elements = [];
     const gridSize = Math.ceil(Math.sqrt(products.length));
     
@@ -248,17 +423,37 @@ class SmartLayout {
       const row = Math.floor(i / gridSize);
       const col = i % gridSize;
       
+      const cellWidth = 96 / gridSize;
+      const cellHeight = 96 / gridSize;
+      const x = (col * (100 / gridSize)) + 2;
+      const y = (row * (100 / gridSize)) + 2;
+
+      // Product image
       elements.push({
         type: 'image',
         source: products[i].url,
         position: {
-          x: (col * (100 / gridSize)) + 2,
-          y: (row * (100 / gridSize)) + 2,
-          width: (96 / gridSize),
-          height: (96 / gridSize)
+          x: x,
+          y: y,
+          width: cellWidth * 0.9,
+          height: cellHeight * 0.6
         },
         zIndex: 1
       });
+
+      // Add CSV data text if available
+      if (csvData) {
+        const csvRow = this.matchProductToCSV(products[i], csvData);
+        if (csvRow) {
+          const textElements = this.createTextElementsFromCSV(csvRow, {
+            x: x,
+            y: y + cellHeight * 0.6,
+            width: cellWidth * 0.9,
+            height: cellHeight * 0.3
+          });
+          elements.push(...textElements);
+        }
+      }
     }
 
     // Add frame if available
@@ -279,9 +474,10 @@ class SmartLayout {
    * @param {Array} products - Product images
    * @param {Object} frameInfo - Frame info
    * @param {Array} icons - Icon images
+   * @param {Array} csvData - CSV product data (optional)
    * @returns {Promise<Array>} Layout elements
    */
-  static async createBannerElements(products, frameInfo, icons) {
+  static async createBannerElements(products, frameInfo, icons, csvData = null) {
     const elements = [];
     
     // Frame background
@@ -299,9 +495,23 @@ class SmartLayout {
       elements.push({
         type: 'image',
         source: products[0].url,
-        position: { x: 60, y: 10, width: 35, height: 80 },
+        position: { x: 60, y: 10, width: 35, height: 60 },
         zIndex: 1
       });
+
+      // Add CSV data for hero product
+      if (csvData) {
+        const csvRow = this.matchProductToCSV(products[0], csvData);
+        if (csvRow) {
+          const textElements = this.createTextElementsFromCSV(csvRow, {
+            x: 60,
+            y: 72,
+            width: 35,
+            height: 20
+          });
+          elements.push(...textElements);
+        }
+      }
     }
 
     // Additional products
@@ -334,9 +544,10 @@ class SmartLayout {
    * @param {Array} products - Product images
    * @param {Object} frameInfo - Frame info
    * @param {Array} icons - Icon images
+   * @param {Array} csvData - CSV product data (optional)
    * @returns {Promise<Array>} Layout elements
    */
-  static async createStoryElements(products, frameInfo, icons) {
+  static async createStoryElements(products, frameInfo, icons, csvData = null) {
     const elements = [];
 
     // Frame background
@@ -354,19 +565,42 @@ class SmartLayout {
       elements.push({
         type: 'image',
         source: products[0].url,
-        position: { x: 10, y: 15, width: 80, height: 60 },
+        position: { x: 10, y: 15, width: 80, height: 50 },
         zIndex: 1
       });
-    }
 
-    // Text overlay area
-    elements.push({
-      type: 'text',
-      content: 'Your Product Title Here',
-      position: { x: 10, y: 80, width: 80, height: 15 },
-      style: { fontSize: 24, color: '#FFFFFF', fontWeight: 'bold' },
-      zIndex: 2
-    });
+      // Add CSV data text
+      if (csvData) {
+        const csvRow = this.matchProductToCSV(products[0], csvData);
+        if (csvRow) {
+          const textElements = this.createTextElementsFromCSV(csvRow, {
+            x: 10,
+            y: 68,
+            width: 80,
+            height: 20
+          });
+          elements.push(...textElements);
+        } else {
+          // Default text if no CSV data
+          elements.push({
+            type: 'text',
+            content: 'Your Product Title Here',
+            position: { x: 10, y: 70, width: 80, height: 10 },
+            style: { fontSize: 24, color: '#000000', fontWeight: 'bold', textAlign: 'center' },
+            zIndex: 2
+          });
+        }
+      } else {
+        // Default text if no CSV data
+        elements.push({
+          type: 'text',
+          content: 'Your Product Title Here',
+          position: { x: 10, y: 70, width: 80, height: 10 },
+          style: { fontSize: 24, color: '#000000', fontWeight: 'bold', textAlign: 'center' },
+          zIndex: 2
+        });
+      }
+    }
 
     return elements;
   }
@@ -375,9 +609,10 @@ class SmartLayout {
    * Create carousel slide layouts
    * @param {Array} products - Product images
    * @param {Object} frameInfo - Frame info
+   * @param {Array} csvData - CSV product data (optional)
    * @returns {Promise<Array>} Carousel slides
    */
-  static async createCarouselSlides(products, frameInfo) {
+  static async createCarouselSlides(products, frameInfo, csvData = null) {
     const slides = [];
 
     // Title slide
@@ -388,7 +623,7 @@ class SmartLayout {
           type: 'text',
           content: 'Product Collection',
           position: { x: 10, y: 40, width: 80, height: 20 },
-          style: { fontSize: 36, color: '#000000', fontWeight: 'bold' },
+          style: { fontSize: 36, color: '#000000', fontWeight: 'bold', textAlign: 'center' },
           zIndex: 1
         }
       ]
@@ -396,23 +631,50 @@ class SmartLayout {
 
     // Product slides
     for (let i = 0; i < products.length; i++) {
-      slides.push({
-        type: 'product',
-        elements: [
-          {
-            type: 'image',
-            source: products[i].url,
-            position: { x: 10, y: 20, width: 80, height: 60 },
-            zIndex: 1
-          },
-          {
+      const slideElements = [
+        {
+          type: 'image',
+          source: products[i].url,
+          position: { x: 10, y: 15, width: 80, height: 55 },
+          zIndex: 1
+        }
+      ];
+
+      // Add CSV data if available
+      if (csvData) {
+        const csvRow = this.matchProductToCSV(products[i], csvData);
+        if (csvRow) {
+          const textElements = this.createTextElementsFromCSV(csvRow, {
+            x: 10,
+            y: 72,
+            width: 80,
+            height: 20
+          });
+          slideElements.push(...textElements);
+        } else {
+          // Default text
+          slideElements.push({
             type: 'text',
             content: `Product ${i + 1}`,
-            position: { x: 10, y: 85, width: 80, height: 10 },
-            style: { fontSize: 18, color: '#333333' },
+            position: { x: 10, y: 75, width: 80, height: 10 },
+            style: { fontSize: 18, color: '#333333', textAlign: 'center' },
             zIndex: 2
-          }
-        ]
+          });
+        }
+      } else {
+        // Default text
+        slideElements.push({
+          type: 'text',
+          content: `Product ${i + 1}`,
+          position: { x: 10, y: 75, width: 80, height: 10 },
+          style: { fontSize: 18, color: '#333333', textAlign: 'center' },
+          zIndex: 2
+        });
+      }
+
+      slides.push({
+        type: 'product',
+        elements: slideElements
       });
     }
 

@@ -57,12 +57,19 @@ export const apiService = {
   },
 
   // File Upload
-  uploadFile: async (sessionId, file, category) => {
+  uploadFile: async (sessionId, file, category, campaignData = {}) => {
     try {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('category', category);
       formData.append('sessionId', sessionId);
+      
+      if (campaignData.campaignName) {
+        formData.append('campaignName', campaignData.campaignName);
+      }
+      if (campaignData.platform) {
+        formData.append('platform', campaignData.platform);
+      }
 
       const response = await apiClient.post('/api/upload', formData, {
         headers: {
@@ -83,6 +90,29 @@ export const apiService = {
         success: false,
         error: error.response?.data?.error || error.message
       };
+    }
+  },
+
+  // Bulk Upload
+  bulkUpload: async (sessionId, formData) => {
+    try {
+      const response = await apiClient.post('/api/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          'X-Session-ID': sessionId
+        },
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round(
+            (progressEvent.loaded * 100) / progressEvent.total
+          );
+          console.log(`Bulk upload progress: ${percentCompleted}%`);
+        },
+      });
+
+      return response.data;
+    } catch (error) {
+      console.error('Bulk upload error:', error);
+      throw new Error('Bulk upload failed: ' + (error.response?.data?.message || error.message));
     }
   },
 
@@ -159,6 +189,62 @@ export const apiService = {
       return response.data;
     } catch (error) {
       throw new Error('Failed to delete session: ' + error.message);
+    }
+  },
+
+  // Campaign Management
+  createCampaign: async (sessionId, campaignName, platform) => {
+    try {
+      const response = await apiClient.post('/api/campaign', {
+        sessionId,
+        campaignName,
+        platform
+      });
+      return response.data;
+    } catch (error) {
+      throw new Error('Failed to create campaign: ' + error.message);
+    }
+  },
+
+  getCampaign: async (sessionId) => {
+    try {
+      const response = await apiClient.get(`/api/campaign/${sessionId}`);
+      return response.data;
+    } catch (error) {
+      throw new Error('Failed to get campaign: ' + error.message);
+    }
+  },
+
+  // CSV Data Management
+  getCSVData: async (sessionId) => {
+    try {
+      const response = await apiClient.get(`/api/csv/${sessionId}`);
+      return response.data;
+    } catch (error) {
+      throw new Error('Failed to get CSV data: ' + error.message);
+    }
+  },
+
+  // Product Matching
+  matchProducts: async (sessionId) => {
+    try {
+      const response = await apiClient.post('/api/match-products', { sessionId });
+      return response.data;
+    } catch (error) {
+      throw new Error('Failed to match products: ' + error.message);
+    }
+  },
+
+  // Template Analysis
+  analyzeTemplate: async (sessionId, templateType = null) => {
+    try {
+      const response = await apiClient.post('/api/analyze-template', {
+        sessionId,
+        templateType
+      });
+      return response.data;
+    } catch (error) {
+      throw new Error('Failed to analyze template: ' + error.message);
     }
   },
 

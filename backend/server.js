@@ -14,14 +14,21 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB limit
-    files: 20 // Maximum 20 files
+    files: 30 // Maximum 30 files
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml', 'text/csv'];
-    if (allowedTypes.includes(file.mimetype)) {
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/webp', 'image/svg+xml', 
+      'text/csv', 'application/vnd.ms-excel',
+      'font/ttf', 'font/woff', 'font/woff2', 
+      'application/x-font-ttf', 'application/x-font-woff'
+    ];
+    const allowedExtensions = /\.(jpg|jpeg|png|webp|svg|csv|ttf|woff|woff2)$/i;
+    
+    if (allowedTypes.includes(file.mimetype) || allowedExtensions.test(file.originalname)) {
       cb(null, true);
     } else {
-      cb(new Error(`Invalid file type: ${file.mimetype}. Only images and CSV are allowed.`), false);
+      cb(new Error(`Invalid file type: ${file.mimetype}. Only images, CSV, and fonts are allowed.`), false);
     }
   }
 });
@@ -66,27 +73,29 @@ app.post('/api/upload', upload.fields([
   { name: 'productImages', maxCount: 10 },
   { name: 'icons', maxCount: 5 },
   { name: 'frame', maxCount: 1 },
-  { name: 'csvFile', maxCount: 1 }
+  { name: 'csvFile', maxCount: 1 },
+  { name: 'fonts', maxCount: 5 }
 ]), async (req, res) => {
   try {
-    const { campaignName } = req.body;
+    const { campaignName, platform } = req.body;
     const sessionId = req.headers['x-session-id'] || req.body.sessionId;
-
-    if (!campaignName) {
-      return res.status(400).json({ error: 'Campaign name is required' });
-    }
 
     if (!sessionId) {
       return res.status(400).json({ error: 'Session ID is required' });
     }
 
     // Validate that at least one file was uploaded
-    const hasFiles = req.files.productImages || req.files.icons || req.files.frame || req.files.csvFile;
+    const hasFiles = req.files.productImages || req.files.icons || req.files.frame || req.files.csvFile || req.files.fonts;
     if (!hasFiles) {
       return res.status(400).json({ error: 'At least one file must be uploaded' });
     }
 
-    const result = await FileHandler.upload(req.files, sessionId, campaignName);
+    const campaignData = {
+      campaignName: campaignName || 'Untitled Campaign',
+      platform: platform || 'general'
+    };
+
+    const result = await FileHandler.upload(req.files, sessionId, campaignData);
     
     res.json({
       success: true,
@@ -402,6 +411,246 @@ app.get('/api/download/:sessionId', async (req, res) => {
     console.error('Download error:', error);
     res.status(500).json({ 
       error: 'Download failed',
+      message: error.message 
+    });
+  }
+});
+
+// Campaign management endpoints
+app.post('/api/campaign', async (req, res) => {
+  try {
+    const { sessionId, campaignName, platform } = req.body;
+    
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Session ID is required' });
+    }
+
+    if (!campaignName) {
+      return res.status(400).json({ error: 'Campaign name is required' });
+    }
+
+    // Update session with campaign data
+    const fs = require('fs');
+    const sessionPath = path.join(__dirname, 'uploads', sessionId, 'session.json');
+    
+    if (!fs.existsSync(sessionPath)) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+    sessionData.campaignName = campaignName;
+    sessionData.platform = platform || 'general';
+    sessionData.updatedAt = new Date().toISOString();
+
+    fs.writeFileSync(sessionPath, JSON.stringify(sessionData, null, 2));
+
+    res.json({
+      success: true,
+      message: 'Campaign data updated',
+      campaign: {
+        sessionId,
+        campaignName,
+        platform: sessionData.platform
+      }
+    });
+
+  } catch (error) {
+    console.error('Campaign update error:', error);
+    res.status(500).json({ 
+      error: 'Failed to update campaign',
+      message: error.message 
+    });
+  }
+});
+
+app.get('/api/campaign/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Session ID is required' });
+    }
+
+    const fs = require('fs');
+    const sessionPath = path.join(__dirname, 'uploads', sessionId, 'session.json');
+    
+    if (!fs.existsSync(sessionPath)) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+
+    res.json({
+      success: true,
+      campaign: {
+        sessionId,
+        campaignName: sessionData.campaignName,
+        platform: sessionData.platform || 'general',
+        uploadDate: sessionData.uploadDate,
+        updatedAt: sessionData.updatedAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Campaign fetch error:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch campaign',
+      message: error.message 
+    });
+  }
+});
+
+// CSV data endpoint
+app.get('/api/csv/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Session ID is required' });
+    }
+
+    const sessionFiles = await FileHandler.getSessionFiles(sessionId);
+
+    if (!sessionFiles.csvData || sessionFiles.csvData.length === 0) {
+      return res.status(404).json({ 
+        error: 'No CSV data found',
+        message: 'Please upload a CSV file first'
+      });
+    }
+
+    res.json({
+      success: true,
+      sessionId,
+      csvData: sessionFiles.csvData,
+      rowCount: sessionFiles.csvData.length,
+      hasData: true
+    });
+
+  } catch (error) {
+    console.error('CSV fetch error:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch CSV data',
+      message: error.message 
+    });
+  }
+});
+
+// Product matching endpoint
+app.post('/api/match-products', async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Session ID is required' });
+    }
+
+    const sessionFiles = await FileHandler.getSessionFiles(sessionId);
+
+    if (!sessionFiles.csvData || sessionFiles.csvData.length === 0) {
+      return res.status(400).json({ 
+        error: 'No CSV data found',
+        message: 'Please upload a CSV file first'
+      });
+    }
+
+    if (!sessionFiles.products || sessionFiles.products.length === 0) {
+      return res.status(400).json({ 
+        error: 'No product images found',
+        message: 'Please upload product images first'
+      });
+    }
+
+    // Perform matching
+    const matchingResults = FileHandler.matchImagesToProducts(
+      sessionFiles.products,
+      sessionFiles.csvData
+    );
+
+    // Optionally rename files
+    if (matchingResults.matched.length > 0) {
+      const renamedFiles = await FileHandler.renameImagesToSKU(sessionId, matchingResults.matched);
+      matchingResults.renamedFiles = renamedFiles;
+    }
+
+    res.json({
+      success: true,
+      sessionId,
+      matching: matchingResults,
+      message: `Matched ${matchingResults.matched.length} of ${sessionFiles.products.length} images`
+    });
+
+  } catch (error) {
+    console.error('Product matching error:', error);
+    res.status(500).json({ 
+      error: 'Failed to match products',
+      message: error.message 
+    });
+  }
+});
+
+// Template analysis endpoint
+app.post('/api/analyze-template', async (req, res) => {
+  try {
+    const { sessionId, templateType } = req.body;
+    
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Session ID is required' });
+    }
+
+    const sessionFiles = await FileHandler.getSessionFiles(sessionId);
+    const fs = require('fs');
+    const sessionPath = path.join(__dirname, 'uploads', sessionId, 'session.json');
+    const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+
+    // Analyze which template works best for this campaign
+    const analysis = {
+      platform: sessionData.platform || 'general',
+      campaignName: sessionData.campaignName,
+      productCount: sessionFiles.products.length,
+      hasFrame: !!sessionFiles.frame,
+      iconCount: sessionFiles.icons.length,
+      hasCsvData: !!(sessionFiles.csvData && sessionFiles.csvData.length > 0),
+      recommendedTemplates: []
+    };
+
+    // Template recommendations based on platform and data
+    if (sessionData.platform === 'lazada' || sessionData.platform === 'shopee') {
+      analysis.recommendedTemplates.push({
+        type: 'ecommerce-grid',
+        name: 'E-commerce Product Grid',
+        reason: 'Optimized for marketplace platforms',
+        priority: 1
+      });
+    }
+
+    if (sessionFiles.csvData && sessionFiles.csvData.length > 0) {
+      analysis.recommendedTemplates.push({
+        type: 'data-driven',
+        name: 'Data-Driven Layout',
+        reason: 'CSV data available for dynamic text',
+        priority: 2
+      });
+    }
+
+    if (sessionFiles.frame) {
+      analysis.recommendedTemplates.push({
+        type: 'framed-showcase',
+        name: 'Framed Product Showcase',
+        reason: 'Custom frame detected',
+        priority: 3
+      });
+    }
+
+    res.json({
+      success: true,
+      sessionId,
+      analysis
+    });
+
+  } catch (error) {
+    console.error('Template analysis error:', error);
+    res.status(500).json({ 
+      error: 'Failed to analyze template',
       message: error.message 
     });
   }

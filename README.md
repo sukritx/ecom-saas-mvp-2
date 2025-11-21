@@ -1,267 +1,316 @@
-# AI-Driven E-Commerce Campaign Asset Generator MVP
+# E-Commerce Campaign Asset Generator - MVP 2.0
 
-A full-stack web application that transforms product images into professional marketing campaigns using AI-powered layout generation and computer vision technology.
+A full-stack MERN application for generating AI-driven e-commerce campaign assets with CSV data integration, automatic SKU matching, and dynamic text population.
 
-## 🚀 Features
+## 🎯 Core Features
 
-- **Smart Upload Wizard**: Upload products, frame templates, and icons with automatic categorization
-- **AI Layout Generation**: Automatic generation of multiple layout options (grids, banners, stories, carousels)
-- **Visual Editor**: Drag-and-drop canvas editor powered by Fabric.js
-- **Asset Management**: Organize and manage uploaded files with advanced filtering and search
-- **Session Management**: Persistent sessions with unique IDs for each user session
-- **Responsive Design**: Built with HeroUI for a modern, responsive interface
+### ✅ Implemented Features
 
-## 🏗️ Project Structure
+#### 1. **CSV Upload & Parsing**
+- Upload product data via CSV files
+- Automatic column mapping for common variations (SKU, Brand, Product Name, Prices, etc.)
+- Support for multiple CSV formats with intelligent header detection
+- Real-time CSV data preview and validation
+
+#### 2. **Campaign Management**
+- Campaign name and platform selection (Lazada, Shopee, Sasa, General)
+- Platform-specific template recommendations
+- Campaign data persistence across sessions
+
+#### 3. **Automatic SKU Matching**
+- Intelligent image-to-SKU matching using multiple strategies:
+  - Exact SKU match in filename
+  - SKU contained in filename
+  - Filename contained in SKU
+- Automatic image renaming to SKU format
+- Match rate reporting and unmatched item tracking
+
+#### 4. **Dynamic Text Population**
+- Automatic text generation from CSV data:
+  - Product names
+  - Brand information
+  - Original and discounted prices
+  - Discount percentage badges
+- Smart text positioning and styling
+- Support for multiple text elements per product
+
+#### 5. **Font Upload System**
+- Support for custom font uploads (TTF, WOFF, WOFF2)
+- Font management and storage per session
+- Ready for dynamic font application in templates
+
+#### 6. **Enhanced File Management**
+- Multi-file upload support:
+  - Product images (up to 10)
+  - Icons (up to 5)
+  - Frame templates (1)
+  - CSV files (1)
+  - Custom fonts (up to 5)
+- File validation and size limits (50MB per file)
+- Session-based file organization
+
+#### 7. **Smart Layout Engine**
+- CSV-aware layout generation
+- Dynamic text element creation based on product data
+- Multiple layout types:
+  - Grid Layout (with CSV data)
+  - Banner Layout (with hero product data)
+  - Story Format (vertical with product info)
+  - Carousel (multi-slide with data)
+
+#### 8. **Visual Editor**
+- Drag-and-drop canvas editing with Fabric.js
+- Click-to-add products with automatic CSV data population
+- Real-time preview of product information
+- Undo/redo functionality
+- Export to PNG
+
+## 🏗️ Architecture
+
+### Backend Stack
+- **Node.js** + **Express.js** - REST API server
+- **Multer** - File upload handling
+- **Sharp** - Image processing
+- **PapaParse** - CSV parsing with column mapping
+- **UUID** - Session management
+
+### Frontend Stack
+- **React** - UI framework
+- **Hero UI** - Component library
+- **Tailwind CSS** - Styling
+- **Fabric.js** - Canvas manipulation
+- **Axios** - API communication
+
+## 📁 Project Structure
 
 ```
 ecom-saas-mvp-2/
-├── backend/                     # Express.js backend
-│   ├── package.json            # Backend dependencies
-│   ├── server.js               # Main server entry point
-│   ├── utils/                  # Utility modules
-│   │   ├── fileHandler.js      # File upload and processing
-│   │   └── smartLayout.js      # AI layout algorithms
-│   └── uploads/                # Dynamic upload directories
-│       └── {sessionId}/        # Session-specific directories
-│           ├── products/       # Product images
-│           ├── icons/          # Icon assets
-│           ├── frame/          # Frame templates
-│           └── processed/      # Processed assets
-├── frontend/                   # React frontend
-│   ├── package.json           # Frontend dependencies
-│   ├── public/
-│   │   └── index.html         # HTML template
-│   └── src/
-│       ├── index.js           # React entry point
-│       ├── App.js             # Main App component
-│       ├── App.css            # Global styles
-│       ├── components/        # React components
-│       │   ├── AppLayout.jsx  # Layout wrapper
-│       │   ├── HomePage.jsx   # Landing page
-│       │   ├── UploadWizard.jsx # File upload interface
-│       │   ├── EditorCanvas.jsx # Visual editor
-│       │   └── ProductList.jsx # Asset management
-│       └── services/          # API services
-│           └── api.js         # API client
-└── README.md                  # This file
+├── backend/
+│   ├── server.js                 # Express server with all endpoints
+│   ├── utils/
+│   │   ├── fileHandler.js        # File upload, CSV parsing, SKU matching
+│   │   └── smartLayout.js        # Layout generation with CSV data
+│   └── uploads/                  # Session-based file storage
+│       └── [sessionId]/
+│           ├── products/         # Product images (renamed to SKU)
+│           ├── icons/            # Icon files
+│           ├── frame/            # Frame template
+│           ├── fonts/            # Custom fonts
+│           ├── processed/        # Generated assets
+│           ├── products.csv      # Uploaded CSV file
+│           └── session.json      # Session metadata
+│
+└── frontend/
+    ├── src/
+    │   ├── components/
+    │   │   ├── UploadWizard.jsx  # Multi-tab upload with CSV & fonts
+    │   │   ├── EditorCanvas.jsx  # Canvas editor with CSV data
+    │   │   ├── ProductList.jsx   # Product management
+    │   │   ├── HomePage.jsx      # Landing page
+    │   │   └── AppLayout.jsx     # App shell
+    │   └── services/
+    │       └── api.js            # API service with all endpoints
+    └── public/
 ```
 
-## 🛠️ Technology Stack
-
-### Backend
-- **Express.js**: Web framework
-- **Multer**: File upload middleware
-- **Sharp**: Image processing
-- **CSV Parser**: Product data parsing
-- **CORS**: Cross-origin resource sharing
-- **UUID**: Unique identifier generation
-
-### Frontend
-- **React 18**: User interface library
-- **HeroUI**: Modern UI component library
-- **React Router**: Client-side routing
-- **Fabric.js**: Canvas manipulation library
-- **Axios**: HTTP client
-- **Heroicons**: Icon library
-- **JSZip**: File compression
-
-## 📦 Installation
+## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (v16 or higher)
+- Node.js (v14 or higher)
 - npm or yarn
 
-### Backend Setup
+### Installation
+
+1. **Clone the repository**
+```bash
+git clone <repository-url>
+cd ecom-saas-mvp-2
+```
+
+2. **Install backend dependencies**
 ```bash
 cd backend
 npm install
-npm start
 ```
 
-The backend server will start on `http://localhost:5000`
+3. **Install frontend dependencies**
+```bash
+cd ../frontend
+npm install
+```
 
-### Frontend Setup
+### Running the Application
+
+1. **Start the backend server**
+```bash
+cd backend
+npm start
+```
+Server runs on `http://localhost:5000`
+
+2. **Start the frontend development server**
 ```bash
 cd frontend
-npm install
 npm start
 ```
+Frontend runs on `http://localhost:3000`
 
-The frontend development server will start on `http://localhost:3000`
+## 📊 CSV File Format
 
-## 🚀 Quick Start
+### Required/Recommended Columns
 
-1. **Start the Backend**
-   ```bash
-   cd backend
-   npm install
-   npm run dev  # Development mode with nodemon
-   ```
+The system automatically maps common column variations. Use any of these column names:
 
-2. **Start the Frontend**
-   ```bash
-   cd frontend
-   npm install
-   npm start
-   ```
+| Standard Field | Accepted Variations |
+|---------------|-------------------|
+| SKU | `sku`, `product_sku`, `item_sku`, `code`, `product_code` |
+| Brand | `brand`, `brand_name`, `manufacturer` |
+| Product Name | `product_name`, `name`, `title`, `product_title`, `item_name` |
+| Full Price | `full_price`, `original_price`, `price`, `msrp`, `retail_price` |
+| Discounted Price | `discounted_price`, `sale_price`, `promo_price`, `special_price` |
+| Discount % | `discount_percent`, `discount`, `discount_%`, `off` |
+| Description | `description`, `product_description`, `details` |
+| Category | `category`, `product_category`, `type` |
 
-3. **Open Your Browser**
-   Navigate to `http://localhost:3000` to access the application.
+### Example CSV
 
-## 🔧 API Endpoints
+```csv
+SKU,Brand,Product Name,Full Price,Discounted Price,Discount Percent
+SKU001,BrandA,Premium Product 1,99.99,79.99,20
+SKU002,BrandB,Deluxe Item 2,149.99,119.99,20
+SKU003,BrandA,Standard Product 3,49.99,39.99,20
+```
+
+## 🔌 API Endpoints
 
 ### Session Management
 - `POST /api/session` - Create new session
-- `GET /api/session/:id` - Get session status
-- `DELETE /api/session/:id` - Delete session
+- `GET /api/session/:sessionId` - Get session status
+- `DELETE /api/session/:sessionId` - Delete session
 
 ### File Upload
-- `POST /api/upload` - Upload files (products, icons, frame)
-- `GET /api/files/:sessionId` - Get session files
-- `DELETE /api/files/:sessionId/:fileName` - Delete specific file
+- `POST /api/upload` - Upload files (products, icons, frame, CSV, fonts)
+- `GET /api/files/:sessionId` - Get all session files
 
-### Processing
-- `POST /api/process` - Process uploaded files
-- `GET /api/layouts/:sessionId` - Get AI layout recommendations
-- `POST /api/generate` - Generate campaign assets
+### Campaign Management
+- `POST /api/campaign` - Create/update campaign
+- `GET /api/campaign/:sessionId` - Get campaign details
 
-### Utilities
-- `GET /api/health` - Health check
-- `GET /` - Server information
+### CSV & Product Matching
+- `GET /api/csv/:sessionId` - Get parsed CSV data
+- `POST /api/match-products` - Match images to CSV SKUs
 
-## 🎯 Usage Guide
+### Layout & Templates
+- `GET /api/layouts/:sessionId` - Get layout recommendations
+- `POST /api/analyze-template` - Analyze best template for campaign
+- `POST /api/process` - Process files and generate layouts
+- `POST /api/generate` - Generate final campaign assets
 
-### 1. Upload Assets
-- Navigate to the Upload page
-- Upload your product images (required)
-- Optionally upload frame templates and icons
-- Files are automatically organized by session
+## 🎨 Usage Workflow
 
-### 2. View Products
-- Check your uploaded assets
-- Use filters and search to find specific files
-- Preview and manage your assets
+### 1. Campaign Setup
+1. Navigate to Upload Wizard
+2. Enter campaign name (e.g., "Black Friday 2025")
+3. Select e-commerce platform (Lazada, Shopee, etc.)
 
-### 3. Generate Layouts
-- Go to the Editor page
-- Click "Generate" to get AI-powered layout recommendations
-- Choose from various templates (grid, banner, story, carousel)
+### 2. Upload CSV Data
+1. Go to "Campaign" tab
+2. Upload CSV file with product data
+3. System automatically parses and validates data
 
-### 4. Edit and Export
-- Use the drag-and-drop editor to customize layouts
-- Add text, adjust positioning, modify styling
-- Export your final campaign assets
+### 3. Upload Product Images
+1. Go to "Products" tab
+2. Upload product images (name files with SKU for auto-matching)
+3. System matches images to CSV data by SKU
 
-## 🔐 Session Management
+### 4. Upload Additional Assets (Optional)
+- **Frame Tab**: Upload custom frame template
+- **Icons Tab**: Upload promotional icons
+- **Fonts Tab**: Upload custom fonts (TTF, WOFF, WOFF2)
 
-The application uses session-based file management:
+### 5. Generate & Edit
+1. Click "Proceed to Editor"
+2. Click "Generate" to create layout recommendations
+3. Select a template to load
+4. Click products to add with automatic CSV data
+5. Customize layout with drag-and-drop
+6. Export final design
 
-- Each user session gets a unique ID
-- Files are organized in session-specific directories
-- Sessions persist until manually cleared
-- New sessions can be generated from the navigation bar
+## 🔧 Key Features Explained
 
-## 🎨 Customization
+### SKU Matching Algorithm
+The system uses a three-strategy approach:
+1. **Exact Match**: Filename exactly matches SKU
+2. **Contains Match**: Filename contains the SKU
+3. **Reverse Contains**: SKU contains the filename
 
-### Adding New Layout Types
-Edit `backend/utils/smartLayout.js` to add new layout algorithms:
+Example:
+- Image: `SKU123.jpg` → Matches SKU: `SKU123`
+- Image: `product-SKU123-photo.jpg` → Matches SKU: `SKU123`
+- Image: `123.jpg` → Matches SKU: `PROD-123-XL`
 
-```javascript
-static async createCustomLayout(products, frameInfo, icons) {
-  // Your custom layout logic here
-  return layoutElements;
-}
-```
+### Dynamic Text Generation
+When a product with CSV data is added to canvas:
+- **Product Name**: Bold, centered, 24px
+- **Brand**: Gray, centered, 16px
+- **Original Price**: Strikethrough if discounted
+- **Sale Price**: Red, bold, prominent
+- **Discount Badge**: Red background, white text, positioned on image
 
-### Extending the Editor
-Add new tools in `frontend/src/components/EditorCanvas.jsx`:
-
-```javascript
-const addCustomTool = () => {
-  // Your custom tool implementation
-};
-```
+### Template-Campaign Analysis
+System recommends templates based on:
+- Platform type (marketplace vs general)
+- Presence of CSV data
+- Number of products
+- Availability of frame/icons
 
 ## 🐛 Troubleshooting
 
-### Common Issues
+### CSV Not Loading
+- Ensure CSV file has headers in first row
+- Check column names match accepted variations
+- Verify file encoding is UTF-8
 
-1. **File Upload Fails**
-   - Check file size (max 50MB)
-   - Ensure file type is supported (JPG, PNG, WEBP, SVG)
-   - Verify backend server is running
+### Images Not Matching SKUs
+- Rename image files to include SKU code
+- Check SKU format in CSV matches filename
+- Use exact SKU as filename for best results
 
-2. **Canvas Not Loading**
-   - Check browser console for Fabric.js errors
-   - Ensure images are loaded with proper CORS headers
+### Upload Fails
+- Check file size (max 50MB per file)
+- Verify file types (images: JPG/PNG/WEBP, fonts: TTF/WOFF/WOFF2)
+- Ensure stable internet connection
 
-3. **Session Issues**
-   - Clear browser localStorage
-   - Generate new session from navigation
+## 📈 Future Enhancements
 
-### Development Mode
-Use these commands for development:
-
-```bash
-# Backend with auto-reload
-cd backend && npm run dev
-
-# Frontend with auto-reload
-cd frontend && npm start
-```
-
-## 📱 Responsive Design
-
-The application is fully responsive and works on:
-- Desktop computers
-- Tablets
-- Mobile devices
-
-## 🔒 Security Features
-
-- File type validation
-- File size limits (50MB)
-- CORS protection
-- Session-based access
-- Input sanitization
-
-## 🎯 Performance Optimizations
-
-- Image compression with Sharp
-- Lazy loading for large file lists
-- Canvas virtualization for better performance
-- Efficient state management with React hooks
-
-## 🚀 Deployment
-
-### Backend Deployment
-1. Set environment variables
-2. Build and deploy to your preferred platform
-3. Configure CORS for your frontend domain
-
-### Frontend Deployment
-1. Build the production bundle: `npm run build`
-2. Deploy the `build` folder to your hosting service
-3. Set `REACT_APP_API_URL` environment variable for production API
-
-## 📄 License
-
-This project is created as an MVP demonstration. Please refer to the license file for usage terms.
+- [ ] AI-powered image background removal
+- [ ] Batch export for multiple products
+- [ ] Template marketplace
+- [ ] Multi-language support
+- [ ] Advanced font styling in editor
+- [ ] Video asset generation
+- [ ] Social media format presets
+- [ ] Collaborative editing
 
 ## 🤝 Contributing
 
-This is an MVP project. For contributions, please:
+Contributions are welcome! Please follow these steps:
 1. Fork the repository
 2. Create a feature branch
-3. Submit a pull request with detailed description
+3. Commit your changes
+4. Push to the branch
+5. Open a Pull Request
 
-## 📞 Support
+## 📄 License
+
+This project is licensed under the MIT License.
+
+## 👥 Support
 
 For issues and questions:
-1. Check the troubleshooting section
-2. Review the API documentation
-3. Open an issue with detailed steps to reproduce
+- Create an issue on GitHub
+- Contact: support@example.com
 
 ---
 
-**Built with ❤️ for AI-powered e-commerce campaign generation**
+**Built with ❤️ using MERN Stack**

@@ -3,6 +3,7 @@ const path = require('path');
 const multer = require('multer');
 const sharp = require('sharp');
 const { v4: uuidv4 } = require('uuid');
+const Papa = require('papaparse');
 
 // Configure multer for memory storage
 const storage = multer.memoryStorage();
@@ -12,11 +13,11 @@ const upload = multer({
     fileSize: 50 * 1024 * 1024, // 50MB limit
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
-    if (allowedTypes.includes(file.mimetype)) {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml', 'text/csv', 'application/vnd.ms-excel', 'font/ttf', 'font/woff', 'font/woff2', 'application/x-font-ttf', 'application/x-font-woff'];
+    if (allowedTypes.includes(file.mimetype) || file.originalname.match(/\.(csv|ttf|woff|woff2)$/i)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only JPEG, PNG, WEBP, and SVG are allowed.'), false);
+      cb(new Error('Invalid file type. Only images, CSV, and font files are allowed.'), false);
     }
   }
 });
@@ -34,7 +35,8 @@ class FileHandler {
       products: path.join(baseDir, 'products'),
       icons: path.join(baseDir, 'icons'),
       frame: path.join(baseDir, 'frame'),
-      processed: path.join(baseDir, 'processed')
+      processed: path.join(baseDir, 'processed'),
+      fonts: path.join(baseDir, 'fonts')
     };
 
     // Create all directories
@@ -45,6 +47,230 @@ class FileHandler {
     });
 
     return directories;
+  }
+
+  /**
+   * Parse CSV file using PapaParse with enhanced column mapping
+   * @param {Buffer|string} csvData - CSV file buffer or path
+   * @returns {Promise<Object>} Parsed CSV data with column mapping
+   */
+  static async parseProductCSV(csvData) {
+    return new Promise((resolve, reject) => {
+      try {
+        let csvString;
+        if (Buffer.isBuffer(csvData)) {
+          csvString = csvData.toString('utf8');
+        } else if (typeof csvData === 'string' && fs.existsSync(csvData)) {
+          csvString = fs.readFileSync(csvData, 'utf8');
+        } else {
+          csvString = csvData;
+        }
+
+        const result = Papa.parse(csvString, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: (header) => header.trim().toLowerCase().replace(/\s+/g, '_'),
+          transform: (value) => value.trim()
+        });
+
+        if (result.errors.length > 0) {
+          console.warn('CSV parsing warnings:', result.errors);
+        }
+
+        // Map common column variations
+        const columnMapping = {
+          sku: ['sku', 'product_sku', 'item_sku', 'code', 'product_code'],
+          brand: ['brand', 'brand_name', 'manufacturer'],
+          product_name: ['product_name', 'name', 'title', 'product_title', 'item_name'],
+          full_price: ['full_price', 'original_price', 'price', 'msrp', 'retail_price'],
+          discounted_price: ['discounted_price', 'sale_price', 'promo_price', 'special_price'],
+          discount_percent: ['discount_percent', 'discount', 'discount_%', 'off'],
+          description: ['description', 'product_description', 'details'],
+          category: ['category', 'product_category', 'type'],
+          image_url: ['image_url', 'image', 'product_image', 'photo']
+        };
+
+        // Normalize data with column mapping
+        const normalizedData = result.data.map((row, index) => {
+          const normalizedRow = { _rowIndex: index };
+          
+          for (const [standardKey, variations] of Object.entries(columnMapping)) {
+            for (const variation of variations) {
+              if (row[variation] !== undefined && row[variation] !== '') {
+                normalizedRow[standardKey] = row[variation];
+                break;
+              }
+            }
+          }
+
+          // Keep original columns too
+          Object.assign(normalizedRow, row);
+          
+          return normalizedRow;
+        });
+
+        resolve({
+          success: true,
+          data: normalizedData,
+          columns: result.meta.fields,
+          rowCount: normalizedData.length,
+          columnMapping
+        });
+
+      } catch (error) {
+        reject(new Error(`CSV parsing failed: ${error.message}`));
+      }
+    });
+  }
+
+  /**
+   * Match uploaded images to CSV SKUs
+   * @param {Array} images - Array of uploaded image objects
+   * @param {Array} csvData - Parsed CSV data
+   * @returns {Object} Matched and unmatched items
+   */
+  static matchImagesToProducts(images, csvData) {
+    const matched = [];
+    const unmatched = [];
+    const unmatchedImages = [];
+
+    // Create SKU lookup map
+    const skuMap = new Map();
+    csvData.forEach((product, index) => {
+      if (product.sku) {
+        skuMap.set(product.sku.toLowerCase(), { ...product, csvIndex: index });
+      }
+    });
+
+    // Try to match each image to a SKU
+    images.forEach(image => {
+      const originalName = image.originalName || image.fileName;
+      const nameWithoutExt = path.basename(originalName, path.extname(originalName));
+      
+      // Try different matching strategies
+      let matchedProduct = null;
+      
+      // Strategy 1: Exact SKU match
+      if (skuMap.has(nameWithoutExt.toLowerCase())) {
+        matchedProduct = skuMap.get(nameWithoutExt.toLowerCase());
+      }
+      
+      // Strategy 2: SKU contained in filename
+      if (!matchedProduct) {
+        for (const [sku, product] of skuMap.entries()) {
+          if (nameWithoutExt.toLowerCase().includes(sku)) {
+            matchedProduct = product;
+            break;
+          }
+        }
+      }
+
+      // Strategy 3: Filename contained in SKU
+      if (!matchedProduct) {
+        for (const [sku, product] of skuMap.entries()) {
+          if (sku.includes(nameWithoutExt.toLowerCase())) {
+            matchedProduct = product;
+            break;
+          }
+        }
+      }
+
+      if (matchedProduct) {
+        matched.push({
+          image,
+          product: matchedProduct,
+          matchedSku: matchedProduct.sku
+        });
+      } else {
+        unmatchedImages.push(image);
+      }
+    });
+
+    // Find unmatched CSV products
+    const matchedSkus = new Set(matched.map(m => m.matchedSku.toLowerCase()));
+    csvData.forEach(product => {
+      if (product.sku && !matchedSkus.has(product.sku.toLowerCase())) {
+        unmatched.push(product);
+      }
+    });
+
+    return {
+      matched,
+      unmatchedProducts: unmatched,
+      unmatchedImages,
+      matchRate: images.length > 0 ? (matched.length / images.length * 100).toFixed(1) : 0
+    };
+  }
+
+  /**
+   * Rename image files to match SKU
+   * @param {string} sessionId - Session identifier
+   * @param {Array} matchedItems - Array of matched image-product pairs
+   * @returns {Promise<Array>} Renamed file information
+   */
+  static async renameImagesToSKU(sessionId, matchedItems) {
+    const directories = this.createSessionDirectories(sessionId);
+    const renamedFiles = [];
+
+    for (const item of matchedItems) {
+      const { image, product } = item;
+      const oldPath = image.path;
+      const extension = path.extname(image.fileName);
+      const newFileName = `${product.sku}${extension}`;
+      const newPath = path.join(directories.products, newFileName);
+
+      try {
+        if (fs.existsSync(oldPath) && oldPath !== newPath) {
+          fs.renameSync(oldPath, newPath);
+          renamedFiles.push({
+            originalName: image.originalName,
+            oldFileName: image.fileName,
+            newFileName,
+            sku: product.sku,
+            url: `/uploads/${sessionId}/products/${newFileName}`
+          });
+        }
+      } catch (error) {
+        console.error(`Failed to rename ${image.fileName}:`, error);
+      }
+    }
+
+    return renamedFiles;
+  }
+
+  /**
+   * Process and save font file
+   * @param {Object} file - Font file from multer
+   * @param {string} sessionId - Session identifier
+   * @returns {Promise<Object>} Font file information
+   */
+  static async processFontFile(file, sessionId) {
+    try {
+      const directories = this.createSessionDirectories(sessionId);
+      const fileExtension = path.extname(file.originalname).toLowerCase();
+      const fontName = path.basename(file.originalname, fileExtension);
+      const fileName = `${fontName}${fileExtension}`;
+      const filePath = path.join(directories.fonts, fileName);
+
+      // Save font file
+      fs.writeFileSync(filePath, file.buffer);
+
+      const stats = fs.statSync(filePath);
+
+      return {
+        fileName,
+        originalName: file.originalname,
+        fontName,
+        path: filePath,
+        size: stats.size,
+        mimetype: file.mimetype,
+        format: fileExtension.replace('.', ''),
+        sessionId,
+        url: `/uploads/${sessionId}/fonts/${fileName}`
+      };
+    } catch (error) {
+      throw new Error(`Failed to process font file: ${error.message}`);
+    }
   }
 
   /**
@@ -186,18 +412,22 @@ class FileHandler {
    * Handle file upload from multipart form
    * @param {Object} files - Files object from multer
    * @param {string} sessionId - Session identifier
-   * @param {string} campaignName - Campaign name
+   * @param {Object} campaignData - Campaign information (name, platform)
    * @returns {Promise<Object>} Upload result
    */
-  static async upload(files, sessionId, campaignName) {
+  static async upload(files, sessionId, campaignData = {}) {
     try {
       const directories = this.createSessionDirectories(sessionId);
       const uploadedFiles = {
         products: [],
         icons: [],
         frame: [],
+        fonts: [],
         csv: null,
-        campaignName
+        csvData: null,
+        matchingResults: null,
+        campaignName: campaignData.campaignName || 'Untitled Campaign',
+        platform: campaignData.platform || 'general'
       };
 
       // Process product images
@@ -225,11 +455,20 @@ class FileHandler {
         uploadedFiles.frame = result;
       }
 
-      // Process CSV file
+      // Process font files
+      if (files.fonts) {
+        const fonts = Array.isArray(files.fonts) ? files.fonts : [files.fonts];
+        for (const file of fonts) {
+          const result = await this.processFontFile(file, sessionId);
+          uploadedFiles.fonts.push(result);
+        }
+      }
+
+      // Process CSV file with enhanced parsing
       if (files.csvFile) {
         const csvFile = Array.isArray(files.csvFile) ? files.csvFile[0] : files.csvFile;
         const csvExtension = path.extname(csvFile.originalname);
-        const csvFileName = `${uuidv4()}${csvExtension}`;
+        const csvFileName = `products${csvExtension}`;
         const csvPath = path.join(directories.base, csvFileName);
         
         fs.writeFileSync(csvPath, csvFile.buffer);
@@ -244,15 +483,43 @@ class FileHandler {
           url: `/uploads/${sessionId}/${csvFileName}`
         };
 
-        // Parse CSV data
-        const csvData = await this.parseCSV(csvPath);
-        uploadedFiles.csvData = csvData;
+        // Parse CSV data with enhanced parser
+        const parsedCSV = await this.parseProductCSV(csvFile.buffer);
+        uploadedFiles.csvData = parsedCSV;
+
+        // Match images to CSV SKUs if both exist
+        if (uploadedFiles.products.length > 0 && parsedCSV.success) {
+          const matchingResults = this.matchImagesToProducts(
+            uploadedFiles.products,
+            parsedCSV.data
+          );
+          uploadedFiles.matchingResults = matchingResults;
+
+          // Optionally auto-rename matched images to SKU
+          if (matchingResults.matched.length > 0) {
+            const renamedFiles = await this.renameImagesToSKU(sessionId, matchingResults.matched);
+            uploadedFiles.renamedFiles = renamedFiles;
+            
+            // Update product file references
+            renamedFiles.forEach(renamed => {
+              const productIndex = uploadedFiles.products.findIndex(
+                p => p.fileName === renamed.oldFileName
+              );
+              if (productIndex !== -1) {
+                uploadedFiles.products[productIndex].fileName = renamed.newFileName;
+                uploadedFiles.products[productIndex].url = renamed.url;
+                uploadedFiles.products[productIndex].sku = renamed.sku;
+              }
+            });
+          }
+        }
       }
 
       // Save session info
       const sessionInfo = {
         sessionId,
-        campaignName,
+        campaignName: uploadedFiles.campaignName,
+        platform: uploadedFiles.platform,
         uploadDate: new Date().toISOString(),
         files: uploadedFiles
       };

@@ -19,13 +19,17 @@ const EditorCanvas = () => {
   const [uploadedFiles, setUploadedFiles] = useState({
     products: [],
     icons: [],
-    frame: null
+    frame: null,
+    csvData: null,
+    fonts: []
   });
+  const [campaignData, setCampaignData] = useState(null);
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 1200 });
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [canvasHistory, setCanvasHistory] = useState([]);
   const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1);
+  const [selectedProduct, setSelectedProduct] = useState(null);
 
   // Initialize Fabric canvas
   useEffect(() => {
@@ -60,6 +64,17 @@ const EditorCanvas = () => {
       try {
         const files = await apiService.getSessionFiles(sessionId);
         setUploadedFiles(files);
+
+        // Load campaign data from localStorage
+        const storedCampaignData = localStorage.getItem('campaignData');
+        if (storedCampaignData) {
+          setCampaignData(JSON.parse(storedCampaignData));
+        }
+
+        // Load CSV data if available
+        if (files.csvData && files.csvData.length > 0) {
+          console.log('CSV data loaded:', files.csvData);
+        }
       } catch (error) {
         console.error('Failed to load files:', error);
       }
@@ -185,21 +200,192 @@ const EditorCanvas = () => {
           fabricCanvas.current.add(img);
           resolve();
         }, { crossOrigin: 'anonymous' });
-      } else if (element.type === 'text') {
-        const text = new fabric.Text(element.content, {
-          left: (element.position.x / 100) * fabricCanvas.current.width,
-          top: (element.position.y / 100) * fabricCanvas.current.height,
+      } else if (element.type === 'text' || element.type === 'badge') {
+        const canvasWidth = fabricCanvas.current.width;
+        const canvasHeight = fabricCanvas.current.height;
+        
+        const textOptions = {
+          left: (element.position.x / 100) * canvasWidth,
+          top: (element.position.y / 100) * canvasHeight,
           fontSize: element.style?.fontSize || 24,
           fill: element.style?.color || '#000000',
           fontWeight: element.style?.fontWeight || 'normal',
-          width: (element.position.width / 100) * fabricCanvas.current.width,
-          textAlign: 'left'
-        });
+          textAlign: element.style?.textAlign || 'left',
+          selectable: true
+        };
 
-        fabricCanvas.current.add(text);
+        // Add background for badges
+        if (element.type === 'badge' && element.style?.backgroundColor) {
+          const text = new fabric.Text(element.content, textOptions);
+          const rect = new fabric.Rect({
+            left: text.left - 5,
+            top: text.top - 5,
+            width: text.width + 10,
+            height: text.height + 10,
+            fill: element.style.backgroundColor,
+            rx: 4,
+            ry: 4
+          });
+          
+          const group = new fabric.Group([rect, text], {
+            left: (element.position.x / 100) * canvasWidth,
+            top: (element.position.y / 100) * canvasHeight,
+            selectable: true
+          });
+          
+          fabricCanvas.current.add(group);
+        } else {
+          const text = new fabric.Text(element.content, textOptions);
+          fabricCanvas.current.add(text);
+        }
+        
         resolve();
       }
     });
+  };
+
+  // Get CSV data for a product
+  const getProductCSVData = (product) => {
+    if (!uploadedFiles.csvData || uploadedFiles.csvData.length === 0) return null;
+
+    const fileName = product.fileName || product.name || '';
+    const fileNameLower = fileName.toLowerCase().replace(/\.(jpg|jpeg|png|webp)$/i, '');
+
+    // Try to find matching CSV row
+    for (const row of uploadedFiles.csvData) {
+      if (row.sku && fileNameLower.includes(row.sku.toLowerCase())) {
+        return row;
+      }
+      if (row.sku && row.sku.toLowerCase().includes(fileNameLower)) {
+        return row;
+      }
+    }
+
+    return null;
+  };
+
+  // Add product with CSV data
+  const addProductWithData = async (product) => {
+    if (!fabricCanvas.current) return;
+
+    try {
+      setIsLoading(true);
+      setSelectedProduct(product);
+
+      const csvData = getProductCSVData(product);
+      
+      // Add product image
+      fabric.Image.fromURL(product.url, (img) => {
+        const canvasWidth = fabricCanvas.current.width;
+        const canvasHeight = fabricCanvas.current.height;
+        const scale = Math.min(canvasWidth / img.width, canvasHeight / img.height, 0.4);
+        
+        img.set({
+          left: canvasWidth / 2 - (img.width * scale) / 2,
+          top: 50,
+          scaleX: scale,
+          scaleY: scale,
+          selectable: true
+        });
+
+        fabricCanvas.current.add(img);
+
+        // Add CSV data text if available
+        if (csvData) {
+          let yOffset = img.top + (img.height * scale) + 20;
+
+          // Product Name
+          if (csvData.product_name) {
+            const nameText = new fabric.Text(csvData.product_name, {
+              left: canvasWidth / 2,
+              top: yOffset,
+              fontSize: 24,
+              fill: '#000000',
+              fontWeight: 'bold',
+              textAlign: 'center',
+              originX: 'center'
+            });
+            fabricCanvas.current.add(nameText);
+            yOffset += 35;
+          }
+
+          // Brand
+          if (csvData.brand) {
+            const brandText = new fabric.Text(csvData.brand, {
+              left: canvasWidth / 2,
+              top: yOffset,
+              fontSize: 16,
+              fill: '#666666',
+              textAlign: 'center',
+              originX: 'center'
+            });
+            fabricCanvas.current.add(brandText);
+            yOffset += 25;
+          }
+
+          // Price
+          if (csvData.discounted_price || csvData.full_price) {
+            if (csvData.discounted_price && csvData.full_price) {
+              // Original price (strikethrough)
+              const originalPrice = new fabric.Text(`${csvData.full_price}`, {
+                left: canvasWidth / 2 - 50,
+                top: yOffset,
+                fontSize: 18,
+                fill: '#999999',
+                textDecoration: 'line-through',
+                textAlign: 'right'
+              });
+              fabricCanvas.current.add(originalPrice);
+
+              // Discounted price
+              const discountedPrice = new fabric.Text(`${csvData.discounted_price}`, {
+                left: canvasWidth / 2 + 10,
+                top: yOffset,
+                fontSize: 22,
+                fill: '#E53E3E',
+                fontWeight: 'bold',
+                textAlign: 'left'
+              });
+              fabricCanvas.current.add(discountedPrice);
+            } else {
+              const price = csvData.discounted_price || csvData.full_price;
+              const priceText = new fabric.Text(`${price}`, {
+                left: canvasWidth / 2,
+                top: yOffset,
+                fontSize: 22,
+                fill: '#000000',
+                fontWeight: 'bold',
+                textAlign: 'center',
+                originX: 'center'
+              });
+              fabricCanvas.current.add(priceText);
+            }
+            yOffset += 30;
+          }
+
+          // Discount badge
+          if (csvData.discount_percent) {
+            const badge = new fabric.Text(`-${csvData.discount_percent}%`, {
+              left: img.left + (img.width * scale) - 60,
+              top: img.top + 10,
+              fontSize: 18,
+              fill: '#FFFFFF',
+              fontWeight: 'bold',
+              backgroundColor: '#E53E3E',
+              padding: 8
+            });
+            fabricCanvas.current.add(badge);
+          }
+        }
+
+        fabricCanvas.current.renderAll();
+        saveCanvasState();
+        setIsLoading(false);
+      }, { crossOrigin: 'anonymous' });
+    } catch (error) {
+      console.error('Failed to add product with data:', error);
+      setIsLoading(false);
+    }
   };
 
   // Generate templates from uploaded files
@@ -356,22 +542,55 @@ const EditorCanvas = () => {
               <h3 className="text-lg font-semibold">Assets</h3>
             </CardHeader>
             <CardBody>
+              {/* Campaign Info */}
+              {campaignData && (
+                <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                  <p className="text-sm font-semibold text-blue-800">{campaignData.campaignName}</p>
+                  <p className="text-xs text-blue-600">{campaignData.platform}</p>
+                </div>
+              )}
+
+              {/* CSV Data Info */}
+              {uploadedFiles.csvData && uploadedFiles.csvData.length > 0 && (
+                <div className="mb-4 p-3 bg-green-50 rounded-lg">
+                  <p className="text-sm font-semibold text-green-800">CSV Data Loaded</p>
+                  <p className="text-xs text-green-600">{uploadedFiles.csvData.length} products</p>
+                </div>
+              )}
+
               <Tabs size="sm" aria-label="Asset types">
                 <Tab key="products" title="Products">
                   <div className="grid grid-cols-2 gap-2 mt-2">
-                    {uploadedFiles.products.map((file, index) => (
-                      <div
-                        key={index}
-                        className="cursor-pointer hover:opacity-75"
-                        onClick={() => addImageToCanvas(file.url)}
-                      >
-                        <img
-                          src={file.url}
-                          alt={`Product ${index + 1}`}
-                          className="w-full aspect-square object-cover rounded border"
-                        />
-                      </div>
-                    ))}
+                    {uploadedFiles.products.map((file, index) => {
+                      const csvData = getProductCSVData(file);
+                      return (
+                        <div key={index} className="space-y-1">
+                          <div
+                            className="cursor-pointer hover:opacity-75 relative group"
+                            onClick={() => uploadedFiles.csvData ? addProductWithData(file) : addImageToCanvas(file.url)}
+                          >
+                            <img
+                              src={file.url}
+                              alt={`Product ${index + 1}`}
+                              className="w-full aspect-square object-cover rounded border"
+                            />
+                            {csvData && (
+                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-70 transition-all flex items-center justify-center">
+                                <div className="text-white text-xs text-center opacity-0 group-hover:opacity-100 p-2">
+                                  <p className="font-bold">{csvData.product_name}</p>
+                                  {csvData.sku && <p className="text-xs">SKU: {csvData.sku}</p>}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          {file.sku && (
+                            <Chip size="sm" color="success" variant="flat" className="w-full text-xs">
+                              {file.sku}
+                            </Chip>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </Tab>
                 
