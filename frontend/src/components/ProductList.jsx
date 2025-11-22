@@ -174,10 +174,7 @@ const ProductList = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Product Assets</h1>
-          <p className="text-gray-600 mt-1">
-            Manage your uploaded products, icons, and frame templates
-          </p>
+          <h1 className="text-3xl font-bold text-gray-900">Products</h1>
         </div>
         <Button 
           color="primary" 

@@ -1,25 +1,32 @@
 import React, { useState, useCallback } from 'react';
-import { Card, CardHeader, CardBody, Button, Input, Progress, Chip, Tabs, Tab, Select, SelectItem } from '@heroui/react';
-import { CloudArrowUpIcon, PhotoIcon, SwatchIcon, DocumentTextIcon, PaintBrushIcon } from '@heroicons/react/24/outline';
+import { Card, CardHeader, CardBody, Button, Input, Progress, Chip } from '@heroui/react';
+import { 
+  CloudArrowUpIcon, 
+  PhotoIcon, 
+  SwatchIcon, 
+  DocumentTextIcon, 
+  PaintBrushIcon,
+  CheckCircleIcon,
+  ArrowRightIcon,
+  ArrowLeftIcon
+} from '@heroicons/react/24/outline';
 import { apiService } from '../services/api';
-import { v4 as uuidv4 } from 'uuid';
 
-const PLATFORMS = [
-  { value: 'lazada', label: 'Lazada' },
-  { value: 'shopee', label: 'Shopee' },
-  { value: 'sasa', label: 'Sasa' },
-  { value: 'general', label: 'General' }
+const STEPS = [
+  { id: 'campaign', title: 'Campaign & CSV', icon: DocumentTextIcon },
+  { id: 'products', title: 'Products', icon: PhotoIcon },
+  { id: 'frame', title: 'Frames', icon: SwatchIcon },
+  { id: 'icons', title: 'Icons', icon: PhotoIcon },
+  { id: 'fonts', title: 'Fonts', icon: PaintBrushIcon },
+  { id: 'review', title: 'Review', icon: CheckCircleIcon }
 ];
 
 const UploadWizard = () => {
-  const [activeTab, setActiveTab] = useState('campaign');
-  const [sessionId, setSessionId] = useState(() => {
-    return localStorage.getItem('sessionId') || '';
-  });
+  const [currentStep, setCurrentStep] = useState(0);
+  const [sessionId, setSessionId] = useState(() => localStorage.getItem('sessionId') || '');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   
-  // Campaign data
   const [campaignData, setCampaignData] = useState({
     campaignName: '',
     platform: 'general'
@@ -35,7 +42,6 @@ const UploadWizard = () => {
     matchingResults: null
   });
 
-  // Initialize session if none exists
   const ensureSession = useCallback(async () => {
     let currentSessionId = localStorage.getItem('sessionId');
     if (!currentSessionId) {
@@ -65,30 +71,12 @@ const UploadWizard = () => {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         
-        // Validate file type based on upload type
-        if (type === 'csv') {
-          if (!file.name.endsWith('.csv')) {
-            alert(`${file.name} is not a CSV file`);
-            continue;
-          }
-        } else if (type === 'fonts') {
-          if (!file.name.match(/\.(ttf|woff|woff2)$/i)) {
-            alert(`${file.name} is not a valid font file (TTF, WOFF, WOFF2)`);
-            continue;
-          }
-        } else {
-          if (!file.type.startsWith('image/')) {
-            alert(`${file.name} is not an image file`);
-            continue;
-          }
-        }
-
-        // Validate file size (50MB limit)
-        if (file.size > 50 * 1024 * 1024) {
-          alert(`${file.name} is too large. Maximum size is 50MB`);
+        // Basic validation
+        if (type === 'csv' && !file.name.endsWith('.csv')) {
+          alert(`${file.name} is not a CSV file`);
           continue;
         }
-
+        
         try {
           const result = await apiService.uploadFile(currentSessionId, file, type, campaignData);
           
@@ -106,74 +94,15 @@ const UploadWizard = () => {
               }
               return newFiles;
             });
-          } else {
-            console.error('Upload failed for', file.name, result.error);
           }
         } catch (error) {
-          console.error('Upload error for', file.name, error);
+          console.error('Upload error:', error);
         }
 
         setUploadProgress(((i + 1) / files.length) * 100);
       }
     } catch (error) {
       console.error('Upload process failed:', error);
-      alert('Upload failed. Please try again.');
-    } finally {
-      setIsUploading(false);
-      setUploadProgress(0);
-    }
-  };
-
-  const handleBulkUpload = async () => {
-    if (!campaignData.campaignName) {
-      alert('Please enter a campaign name');
-      return;
-    }
-
-    setIsUploading(true);
-    setUploadProgress(10);
-
-    try {
-      const currentSessionId = await ensureSession();
-      
-      // Prepare form data for bulk upload
-      const formData = new FormData();
-      formData.append('campaignName', campaignData.campaignName);
-      formData.append('platform', campaignData.platform);
-      formData.append('sessionId', currentSessionId);
-
-      // Add all files
-      uploadedFiles.products.forEach(file => {
-        if (file.file) formData.append('productImages', file.file);
-      });
-      uploadedFiles.icons.forEach(file => {
-        if (file.file) formData.append('icons', file.file);
-      });
-      if (uploadedFiles.frame?.file) {
-        formData.append('frame', uploadedFiles.frame.file);
-      }
-      if (uploadedFiles.csv?.file) {
-        formData.append('csvFile', uploadedFiles.csv.file);
-      }
-      uploadedFiles.fonts.forEach(file => {
-        if (file.file) formData.append('fonts', file.file);
-      });
-
-      setUploadProgress(50);
-
-      const result = await apiService.bulkUpload(currentSessionId, formData);
-      
-      if (result.success) {
-        setUploadedFiles(prev => ({
-          ...prev,
-          ...result.files,
-          matchingResults: result.files.matchingResults
-        }));
-        setUploadProgress(100);
-        alert('All files uploaded successfully!');
-      }
-    } catch (error) {
-      console.error('Bulk upload failed:', error);
       alert('Upload failed. Please try again.');
     } finally {
       setIsUploading(false);
@@ -193,507 +122,412 @@ const UploadWizard = () => {
     });
   };
 
-  const clearAllFiles = () => {
-    setUploadedFiles({
-      products: [],
-      icons: [],
-      frame: null,
-      csv: null,
-      csvData: null,
-      fonts: [],
-      matchingResults: null
-    });
+  const handleNext = () => {
+    if (currentStep === 0 && !campaignData.campaignName) {
+      alert('Please enter a campaign name');
+      return;
+    }
+    if (currentStep === 1 && uploadedFiles.products.length === 0) {
+      if (!window.confirm('No products uploaded. Are you sure you want to proceed?')) return;
+    }
+    setCurrentStep(prev => Math.min(prev + 1, STEPS.length - 1));
+  };
+
+  const handleBack = () => {
+    setCurrentStep(prev => Math.max(prev - 1, 0));
+  };
+
+  const handleFinish = () => {
+    localStorage.setItem('campaignData', JSON.stringify(campaignData));
+    localStorage.setItem('uploadedFiles', JSON.stringify(uploadedFiles));
+    window.location.href = '/editor';
   };
 
   const renderFilePreview = (file, index, type) => {
-    if (type === 'frame') {
-      return (
-        <div key="frame" className="relative">
-          <img 
-            src={file.url || URL.createObjectURL(file.file)} 
-            alt="Frame" 
-            className="w-full h-24 object-cover rounded-lg border"
-          />
-          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-lg opacity-0 hover:opacity-100 transition-opacity">
-            <Button
-              size="sm"
-              color="danger"
-              variant="flat"
-              onPress={() => removeFile('frame')}
-            >
-              Remove
-            </Button>
-          </div>
-          <p className="text-xs text-center mt-1 truncate">{file.originalName || file.name}</p>
-        </div>
-      );
-    }
+    if (!file) return null;
 
-    if (type === 'csv') {
-      return (
-        <div key="csv" className="relative p-4 bg-green-50 rounded-lg border border-green-200">
-          <DocumentTextIcon className="h-8 w-8 text-green-600 mx-auto" />
-          <p className="text-sm text-center mt-2 font-medium text-green-800">{file.originalName || file.name}</p>
-          {uploadedFiles.csvData && (
-            <p className="text-xs text-center text-green-600 mt-1">
-              {uploadedFiles.csvData.rowCount || uploadedFiles.csvData.length} products loaded
-            </p>
-          )}
-          <Button
-            size="sm"
-            color="danger"
-            variant="flat"
-            className="mt-2 w-full"
-            onPress={() => removeFile('csv')}
-          >
-            Remove
-          </Button>
-        </div>
-      );
-    }
-
-    if (type === 'fonts') {
-      return (
-        <div key={index} className="relative p-3 bg-purple-50 rounded-lg border border-purple-200">
-          <PaintBrushIcon className="h-6 w-6 text-purple-600 mx-auto" />
-          <p className="text-xs text-center mt-1 truncate font-medium text-purple-800">
-            {file.originalName || file.fontName || file.name}
-          </p>
-          <Button
-            size="sm"
-            color="danger"
-            variant="flat"
-            className="mt-2 w-full"
-            onPress={() => removeFile('fonts', index)}
-          >
-            Remove
-          </Button>
-        </div>
-      );
-    }
-
+    const isImage = type !== 'csv' && type !== 'fonts';
+    
     return (
-      <div key={index} className="relative">
-        <img 
-          src={file.url || URL.createObjectURL(file.file)} 
-          alt={`${type} ${index + 1}`} 
-          className="w-full h-24 object-cover rounded-lg border"
-        />
-        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-lg opacity-0 hover:opacity-100 transition-opacity">
-          <Button
-            size="sm"
-            color="danger"
-            variant="flat"
-            onPress={() => removeFile(type, index)}
-          >
-            Remove
-          </Button>
-        </div>
-        <p className="text-xs text-center mt-1 truncate">{file.originalName || file.name}</p>
-        {file.sku && (
-          <Chip size="sm" color="success" variant="flat" className="mt-1">
-            SKU: {file.sku}
-          </Chip>
+      <div key={index || type} className="relative group border rounded-lg p-2 bg-white shadow-sm hover:shadow-md transition-all">
+        {isImage ? (
+          <div className="aspect-square w-full overflow-hidden rounded-md bg-gray-100 mb-2">
+            <img 
+              src={file.url || URL.createObjectURL(file.file)} 
+              alt={file.originalName} 
+              className="w-full h-full object-cover"
+            />
+          </div>
+        ) : (
+          <div className="aspect-square w-full flex items-center justify-center bg-gray-50 rounded-md mb-2">
+            {type === 'csv' ? (
+              <DocumentTextIcon className="w-8 h-8 text-green-600" />
+            ) : (
+              <PaintBrushIcon className="w-8 h-8 text-purple-600" />
+            )}
+          </div>
         )}
+        
+        <div className="text-xs truncate font-medium text-gray-700 px-1">
+          {file.originalName || file.name}
+        </div>
+        
+        <button
+          onClick={() => removeFile(type, index)}
+          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
     );
   };
 
-  return (
-    <div className="upload-wizard space-y-6">
-      {/* Header */}
-      <div className="text-center">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Campaign Asset Generator</h1>
-        <p className="text-gray-600">
-          Upload your product data, images, and assets to generate campaign materials
-        </p>
-        {sessionId && (
-          <Chip size="sm" color="primary" variant="flat" className="mt-2">
-            Session: {sessionId.substring(0, 12)}...
-          </Chip>
-        )}
-      </div>
-
-      {/* Upload Progress */}
-      {isUploading && (
-        <Card>
-          <CardBody>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Uploading files...</span>
-                <span>{Math.round(uploadProgress)}%</span>
-              </div>
-              <Progress value={uploadProgress} />
+  const renderStepContent = () => {
+    switch (currentStep) {
+      case 0: // Campaign & CSV
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Campaign Name"
+                placeholder="Enter campaign name"
+                value={campaignData.campaignName}
+                onChange={(e) => setCampaignData(prev => ({ ...prev, campaignName: e.target.value }))}
+                isRequired
+                variant="bordered"
+              />
+              <Input
+                label="Platform"
+                placeholder="e.g. Lazada, Shopee"
+                value={campaignData.platform}
+                onChange={(e) => setCampaignData(prev => ({ ...prev, platform: e.target.value }))}
+                variant="bordered"
+              />
             </div>
-          </CardBody>
-        </Card>
-      )}
 
-      {/* Matching Results */}
-      {uploadedFiles.matchingResults && (
-        <Card className="bg-blue-50 border-blue-200">
-          <CardBody>
-            <h3 className="font-semibold text-blue-800 mb-2">SKU Matching Results</h3>
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div className="text-center">
-                <p className="text-2xl font-bold text-green-600">{uploadedFiles.matchingResults.matched?.length || 0}</p>
-                <p className="text-gray-600">Matched</p>
-              </div>
-              <div className="text-center">
-                <p className="text-2xl font-bold text-yellow-600">{uploadedFiles.matchingResults.unmatchedImages?.length || 0}</p>
-                <p className="text-gray-600">Unmatched Images</p>
-              </div>
-              <div className="text-center">
-                <p className="text-2xl font-bold text-blue-600">{uploadedFiles.matchingResults.matchRate || 0}%</p>
-                <p className="text-gray-600">Match Rate</p>
-              </div>
+            <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:border-blue-500 transition-colors bg-gray-50">
+              <DocumentTextIcon className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+              <h3 className="text-sm font-medium text-gray-900">Upload Product Data (CSV)</h3>
+              <p className="text-xs text-gray-500 mb-4">Optional: Upload CSV for automatic data mapping</p>
+              
+              <label className="cursor-pointer">
+                <Button color="primary" variant="flat" as="span" isLoading={isUploading}>
+                  Choose CSV File
+                </Button>
+                <input
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={(e) => handleFileUpload(e, 'csv')}
+                  disabled={isUploading}
+                />
+              </label>
             </div>
-          </CardBody>
-        </Card>
-      )}
 
-      {/* Upload Sections */}
-      <Card>
-        <CardBody>
-          <Tabs 
-            selectedKey={activeTab} 
-            onSelectionChange={setActiveTab}
-            aria-label="Upload sections"
-            className="mb-6"
-          >
-            {/* Campaign Tab */}
-            <Tab key="campaign" title={
-              <div className="flex items-center space-x-2">
-                <DocumentTextIcon className="h-5 w-5" />
-                <span>Campaign</span>
-              </div>
-            }>
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <Input
-                      label="Campaign Name"
-                      placeholder="e.g., Black Friday 2025"
-                      value={campaignData.campaignName}
-                      onChange={(e) => setCampaignData(prev => ({ ...prev, campaignName: e.target.value }))}
-                      isRequired
-                    />
-                  </div>
-                  <div>
-                    <Select
-                      label="E-commerce Platform"
-                      placeholder="Select platform"
-                      selectedKeys={[campaignData.platform]}
-                      onChange={(e) => setCampaignData(prev => ({ ...prev, platform: e.target.value }))}
-                    >
-                      {PLATFORMS.map((platform) => (
-                        <SelectItem key={platform.value} value={platform.value}>
-                          {platform.label}
-                        </SelectItem>
-                      ))}
-                    </Select>
-                  </div>
+            {uploadedFiles.csv && (
+              <div className="mt-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Uploaded CSV</h4>
+                <div className="w-48">
+                  {renderFilePreview(uploadedFiles.csv, null, 'csv')}
                 </div>
+              </div>
+            )}
+          </div>
+        );
 
-                {/* CSV Upload */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Product Data (CSV)
-                  </label>
-                  <div className="border-2 border-dashed border-green-300 rounded-lg p-6 text-center hover:border-green-500 transition-colors bg-green-50">
-                    <DocumentTextIcon className="mx-auto h-12 w-12 text-green-400" />
-                    <div className="mt-4">
-                      <label htmlFor="csv-upload" className="cursor-pointer">
-                        <Button color="success" variant="flat" as="span">
-                          Upload CSV File
-                        </Button>
-                        <input
-                          id="csv-upload"
-                          type="file"
-                          accept=".csv"
-                          className="hidden"
-                          onChange={(e) => handleFileUpload(e, 'csv')}
-                          disabled={isUploading}
-                        />
-                      </label>
-                      <p className="mt-2 text-xs text-gray-500">
-                        CSV with columns: SKU, Brand, Product Name, Full Price, Discounted Price, etc.
-                      </p>
-                    </div>
-                  </div>
+      case 1: // Products
+        return (
+          <div className="space-y-6">
+            <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:border-blue-500 transition-colors bg-gray-50">
+              <PhotoIcon className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+              <h3 className="text-sm font-medium text-gray-900">Upload Product Images</h3>
+              <p className="text-xs text-gray-500 mb-4">Supported: JPG, PNG, WEBP</p>
+              
+              <label className="cursor-pointer">
+                <Button color="primary" variant="flat" as="span" isLoading={isUploading}>
+                  Select Images
+                </Button>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => handleFileUpload(e, 'products')}
+                  disabled={isUploading}
+                />
+              </label>
+            </div>
 
-                  {/* CSV Preview */}
-                  {uploadedFiles.csv && (
-                    <div className="mt-4 max-w-xs">
-                      {renderFilePreview(uploadedFiles.csv, null, 'csv')}
-                    </div>
+            {uploadedFiles.products.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">
+                  Uploaded Products ({uploadedFiles.products.length})
+                </h4>
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
+                  {uploadedFiles.products.map((file, index) => 
+                    renderFilePreview(file, index, 'products')
                   )}
                 </div>
               </div>
-            </Tab>
+            )}
+          </div>
+        );
 
-            {/* Products Tab */}
-            <Tab key="products" title={
-              <div className="flex items-center space-x-2">
-                <PhotoIcon className="h-5 w-5" />
-                <span>Products</span>
-                <Chip size="sm" variant="flat">{uploadedFiles.products.length}</Chip>
+      case 2: // Frames
+        return (
+          <div className="space-y-6">
+            <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:border-blue-500 transition-colors bg-gray-50">
+              <SwatchIcon className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+              <h3 className="text-sm font-medium text-gray-900">Upload Frame Template</h3>
+              <p className="text-xs text-gray-500 mb-4">Optional: Upload a frame overlay</p>
+              
+              <label className="cursor-pointer">
+                <Button color="primary" variant="flat" as="span" isLoading={isUploading}>
+                  Select Frame
+                </Button>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => handleFileUpload(e, 'frame')}
+                  disabled={isUploading}
+                />
+              </label>
+            </div>
+
+            {uploadedFiles.frame && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Uploaded Frame</h4>
+                <div className="w-48">
+                  {renderFilePreview(uploadedFiles.frame, null, 'frame')}
+                </div>
               </div>
-            }>
-              <div className="space-y-4">
+            )}
+          </div>
+        );
+
+      case 3: // Icons
+        return (
+          <div className="space-y-6">
+            <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:border-blue-500 transition-colors bg-gray-50">
+              <PhotoIcon className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+              <h3 className="text-sm font-medium text-gray-900">Upload Icons</h3>
+              <p className="text-xs text-gray-500 mb-4">Optional: Badges, logos, or decorative elements</p>
+              
+              <label className="cursor-pointer">
+                <Button color="primary" variant="flat" as="span" isLoading={isUploading}>
+                  Select Icons
+                </Button>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => handleFileUpload(e, 'icons')}
+                  disabled={isUploading}
+                />
+              </label>
+            </div>
+
+            {uploadedFiles.icons.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">
+                  Uploaded Icons ({uploadedFiles.icons.length})
+                </h4>
+                <div className="grid grid-cols-4 md:grid-cols-8 gap-4">
+                  {uploadedFiles.icons.map((file, index) => 
+                    renderFilePreview(file, index, 'icons')
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+
+      case 4: // Fonts
+        return (
+          <div className="space-y-6">
+            <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:border-blue-500 transition-colors bg-gray-50">
+              <PaintBrushIcon className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+              <h3 className="text-sm font-medium text-gray-900">Upload Fonts</h3>
+              <p className="text-xs text-gray-500 mb-4">Optional: TTF, WOFF, WOFF2</p>
+              
+              <label className="cursor-pointer">
+                <Button color="primary" variant="flat" as="span" isLoading={isUploading}>
+                  Select Fonts
+                </Button>
+                <input
+                  type="file"
+                  multiple
+                  accept=".ttf,.woff,.woff2"
+                  className="hidden"
+                  onChange={(e) => handleFileUpload(e, 'fonts')}
+                  disabled={isUploading}
+                />
+              </label>
+            </div>
+
+            {uploadedFiles.fonts.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">
+                  Uploaded Fonts ({uploadedFiles.fonts.length})
+                </h4>
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
+                  {uploadedFiles.fonts.map((file, index) => 
+                    renderFilePreview(file, index, 'fonts')
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+
+      case 5: // Review
+        return (
+          <div className="space-y-6">
+            <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Campaign Summary</h3>
+              
+              <div className="grid grid-cols-2 gap-6 mb-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Product Images
-                  </label>
-                  <p className="text-xs text-gray-500 mb-2">
-                    Name your files with SKU codes for automatic matching (e.g., SKU123.jpg)
-                  </p>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary transition-colors">
-                    <CloudArrowUpIcon className="mx-auto h-12 w-12 text-gray-400" />
-                    <div className="mt-4">
-                      <label htmlFor="products-upload" className="cursor-pointer">
-                        <Button color="primary" variant="flat" as="span">
-                          Select Product Images
-                        </Button>
-                        <input
-                          id="products-upload"
-                          type="file"
-                          multiple
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => handleFileUpload(e, 'products')}
-                          disabled={isUploading}
-                        />
-                      </label>
-                      <p className="mt-2 text-xs text-gray-500">
-                        PNG, JPG, WEBP up to 50MB each
-                      </p>
-                    </div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wider">Campaign Name</p>
+                  <p className="font-medium text-gray-900">{campaignData.campaignName}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wider">Platform</p>
+                  <p className="font-medium text-gray-900">{campaignData.platform}</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-100">
+                  <div className="flex items-center space-x-3">
+                    <PhotoIcon className="w-5 h-5 text-gray-400" />
+                    <span className="text-sm text-gray-700">Products</span>
                   </div>
+                  <span className="font-semibold text-gray-900">{uploadedFiles.products.length}</span>
                 </div>
 
-                {/* Products Preview */}
-                {uploadedFiles.products.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">
-                      Uploaded Products ({uploadedFiles.products.length})
-                    </h4>
-                    <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
-                      {uploadedFiles.products.map((file, index) => 
-                        renderFilePreview(file, index, 'products')
-                      )}
-                    </div>
+                <div className="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-100">
+                  <div className="flex items-center space-x-3">
+                    <SwatchIcon className="w-5 h-5 text-gray-400" />
+                    <span className="text-sm text-gray-700">Frame</span>
                   </div>
-                )}
-              </div>
-            </Tab>
-
-            {/* Frame Tab */}
-            <Tab key="frame" title={
-              <div className="flex items-center space-x-2">
-                <SwatchIcon className="h-5 w-5" />
-                <span>Frame</span>
-                <Chip size="sm" variant="flat">{uploadedFiles.frame ? 1 : 0}</Chip>
-              </div>
-            }>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Frame Template (Optional)
-                  </label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary transition-colors">
-                    <CloudArrowUpIcon className="mx-auto h-12 w-12 text-gray-400" />
-                    <div className="mt-4">
-                      <label htmlFor="frame-upload" className="cursor-pointer">
-                        <Button color="primary" variant="flat" as="span">
-                          Select Frame Template
-                        </Button>
-                        <input
-                          id="frame-upload"
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => handleFileUpload(e, 'frame')}
-                          disabled={isUploading}
-                        />
-                      </label>
-                      <p className="mt-2 text-xs text-gray-500">
-                        PNG, JPG, WEBP up to 50MB
-                      </p>
-                    </div>
-                  </div>
+                  <span className="font-semibold text-gray-900">{uploadedFiles.frame ? 'Yes' : 'No'}</span>
                 </div>
 
-                {/* Frame Preview */}
-                {uploadedFiles.frame && (
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Uploaded Frame</h4>
-                    <div className="max-w-xs">
-                      {renderFilePreview(uploadedFiles.frame, null, 'frame')}
-                    </div>
+                <div className="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-100">
+                  <div className="flex items-center space-x-3">
+                    <PhotoIcon className="w-5 h-5 text-gray-400" />
+                    <span className="text-sm text-gray-700">Icons</span>
                   </div>
-                )}
-              </div>
-            </Tab>
-
-            {/* Icons Tab */}
-            <Tab key="icons" title={
-              <div className="flex items-center space-x-2">
-                <PhotoIcon className="h-5 w-5" />
-                <span>Icons</span>
-                <Chip size="sm" variant="flat">{uploadedFiles.icons.length}</Chip>
-              </div>
-            }>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Icons (Optional)
-                  </label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary transition-colors">
-                    <CloudArrowUpIcon className="mx-auto h-12 w-12 text-gray-400" />
-                    <div className="mt-4">
-                      <label htmlFor="icons-upload" className="cursor-pointer">
-                        <Button color="primary" variant="flat" as="span">
-                          Select Icons
-                        </Button>
-                        <input
-                          id="icons-upload"
-                          type="file"
-                          multiple
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => handleFileUpload(e, 'icons')}
-                          disabled={isUploading}
-                        />
-                      </label>
-                      <p className="mt-2 text-xs text-gray-500">
-                        PNG, JPG, WEBP up to 50MB each
-                      </p>
-                    </div>
-                  </div>
+                  <span className="font-semibold text-gray-900">{uploadedFiles.icons.length}</span>
                 </div>
 
-                {/* Icons Preview */}
-                {uploadedFiles.icons.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">
-                      Uploaded Icons ({uploadedFiles.icons.length})
-                    </h4>
-                    <div className="grid grid-cols-4 md:grid-cols-8 gap-4">
-                      {uploadedFiles.icons.map((file, index) => 
-                        renderFilePreview(file, index, 'icons')
-                      )}
-                    </div>
+                <div className="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-100">
+                  <div className="flex items-center space-x-3">
+                    <DocumentTextIcon className="w-5 h-5 text-gray-400" />
+                    <span className="text-sm text-gray-700">CSV Data</span>
                   </div>
-                )}
-              </div>
-            </Tab>
-
-            {/* Fonts Tab */}
-            <Tab key="fonts" title={
-              <div className="flex items-center space-x-2">
-                <PaintBrushIcon className="h-5 w-5" />
-                <span>Fonts</span>
-                <Chip size="sm" variant="flat">{uploadedFiles.fonts.length}</Chip>
-              </div>
-            }>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Custom Fonts (Optional)
-                  </label>
-                  <div className="border-2 border-dashed border-purple-300 rounded-lg p-6 text-center hover:border-purple-500 transition-colors bg-purple-50">
-                    <PaintBrushIcon className="mx-auto h-12 w-12 text-purple-400" />
-                    <div className="mt-4">
-                      <label htmlFor="fonts-upload" className="cursor-pointer">
-                        <Button color="secondary" variant="flat" as="span">
-                          Upload Fonts
-                        </Button>
-                        <input
-                          id="fonts-upload"
-                          type="file"
-                          multiple
-                          accept=".ttf,.woff,.woff2"
-                          className="hidden"
-                          onChange={(e) => handleFileUpload(e, 'fonts')}
-                          disabled={isUploading}
-                        />
-                      </label>
-                      <p className="mt-2 text-xs text-gray-500">
-                        TTF, WOFF, WOFF2 font files
-                      </p>
-                    </div>
-                  </div>
+                  <span className="font-semibold text-gray-900">{uploadedFiles.csv ? 'Yes' : 'No'}</span>
                 </div>
-
-                {/* Fonts Preview */}
-                {uploadedFiles.fonts.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">
-                      Uploaded Fonts ({uploadedFiles.fonts.length})
-                    </h4>
-                    <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
-                      {uploadedFiles.fonts.map((file, index) => 
-                        renderFilePreview(file, index, 'fonts')
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
-            </Tab>
-          </Tabs>
-
-          {/* Actions */}
-          <div className="flex justify-between items-center pt-6 border-t">
-            <Button 
-              variant="flat" 
-              color="danger" 
-              onPress={clearAllFiles}
-              disabled={isUploading || (
-                uploadedFiles.products.length === 0 && 
-                uploadedFiles.icons.length === 0 && 
-                uploadedFiles.fonts.length === 0 &&
-                !uploadedFiles.frame &&
-                !uploadedFiles.csv
-              )}
-            >
-              Clear All
-            </Button>
-
-            <div className="space-x-4">
-              <Button 
-                variant="flat" 
-                onPress={() => window.location.href = '/products'}
-                disabled={isUploading}
-              >
-                View Products
-              </Button>
-              <Button 
-                color="primary" 
-                onPress={() => {
-                  if (!campaignData.campaignName) {
-                    alert('Please enter a campaign name');
-                    setActiveTab('campaign');
-                    return;
-                  }
-                  if (uploadedFiles.products.length === 0) {
-                    alert('Please upload at least one product image');
-                    setActiveTab('products');
-                    return;
-                  }
-                  // Store campaign data in localStorage for editor
-                  localStorage.setItem('campaignData', JSON.stringify(campaignData));
-                  localStorage.setItem('uploadedFiles', JSON.stringify(uploadedFiles));
-                  window.location.href = '/editor';
-                }}
-                disabled={isUploading || uploadedFiles.products.length === 0}
-              >
-                Proceed to Editor
-              </Button>
             </div>
           </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto py-8 px-4">
+      {/* Progress Steps */}
+      <div className="mb-8">
+        <div className="flex justify-between items-center relative">
+          <div className="absolute left-0 top-1/2 w-full h-0.5 bg-gray-200 -z-10" />
+          {STEPS.map((step, index) => {
+            const Icon = step.icon;
+            const isActive = index === currentStep;
+            const isCompleted = index < currentStep;
+            
+            return (
+              <div key={step.id} className="flex flex-col items-center bg-white px-2">
+                <div 
+                  className={`
+                    w-10 h-10 rounded-full flex items-center justify-center border-2 transition-colors
+                    ${isActive || isCompleted ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-300 bg-white text-gray-400'}
+                  `}
+                >
+                  <Icon className="w-5 h-5" />
+                </div>
+                <span className={`text-xs mt-2 font-medium ${isActive ? 'text-blue-600' : 'text-gray-500'}`}>
+                  {step.title}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <Card className="min-h-[400px]">
+        <CardHeader className="px-6 py-4 border-b border-gray-100">
+          <h2 className="text-xl font-bold text-gray-900">{STEPS[currentStep].title}</h2>
+        </CardHeader>
+        
+        <CardBody className="p-6">
+          {isUploading && (
+            <div className="mb-6">
+              <Progress 
+                size="sm" 
+                value={uploadProgress} 
+                color="primary" 
+                className="max-w-md mx-auto"
+                label="Uploading..."
+              />
+            </div>
+          )}
+          
+          {renderStepContent()}
         </CardBody>
       </Card>
+
+      {/* Navigation */}
+      <div className="flex justify-between mt-6">
+        <Button
+          variant="flat"
+          color="default"
+          onPress={handleBack}
+          disabled={currentStep === 0 || isUploading}
+          startContent={<ArrowLeftIcon className="w-4 h-4" />}
+        >
+          Back
+        </Button>
+
+        {currentStep === STEPS.length - 1 ? (
+          <Button
+            color="success"
+            onPress={handleFinish}
+            disabled={isUploading}
+            endContent={<CheckCircleIcon className="w-4 h-4" />}
+          >
+            Generate Products
+          </Button>
+        ) : (
+          <Button
+            color="primary"
+            onPress={handleNext}
+            disabled={isUploading}
+            endContent={<ArrowRightIcon className="w-4 h-4" />}
+          >
+            Next Step
+          </Button>
+        )}
+      </div>
     </div>
   );
 };

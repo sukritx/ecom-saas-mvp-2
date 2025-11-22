@@ -436,10 +436,7 @@ const EditorCanvas = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Visual Editor</h1>
-          <p className="text-gray-600 mt-1">
-            Create and customize your campaign assets with drag-and-drop editing
-          </p>
+          <h1 className="text-3xl font-bold text-gray-900">Editor</h1>
         </div>
         <div className="flex space-x-2">
           <Button
