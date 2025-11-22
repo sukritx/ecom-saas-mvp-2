@@ -60,7 +60,18 @@ export const apiService = {
   uploadFile: async (sessionId, file, category, campaignData = {}) => {
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      
+      // Map frontend categories to backend Multer field names
+      const fieldNameMap = {
+        'products': 'productImages',
+        'icons': 'icons',
+        'frame': 'frame',
+        'csv': 'csvFile',
+        'fonts': 'fonts'
+      };
+      
+      const fieldName = fieldNameMap[category] || category;
+      formData.append(fieldName, file);
       formData.append('category', category);
       formData.append('sessionId', sessionId);
       
